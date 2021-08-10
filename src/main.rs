@@ -1,3 +1,5 @@
+use rand::Rng;
+
 use std::env;
 use std::net::SocketAddrV4;
 use async_std::prelude::*;
@@ -13,35 +15,42 @@ use serde_json::de::Deserializer;
 
 use paillier::*;
 
+use std::mem::size_of;
+
 mod messages_types;
+mod protocol;
 
-async fn run_server(addr: SocketAddrV4) {
-    let listener = TcpListener::bind(addr)
-        .await
-        .expect(format!("Failed to bind to {}", addr).as_str());
+fn p0() {
+    const num_triples: usize = 300;
+    let p = 700;
+    let mut rng = rand::thread_rng();
 
-    println!("Listening on {}", addr);
+    println!("generating my keypair for Paillier's cryptosystem...");
+    let (ek, dk) = Paillier::keypair().keys();
+    println!("keypair generated.");
 
-    while let Ok((stream, addr)) = listener.accept().await {
-        println!("Got a stream from {:?}!", addr);
-        task::spawn(connection_loop(stream));
-    }
-}
+    println!("generating my {} random triples...", num_triples);
+    let pairs: Vec<protocol::ab_pair> = (0..num_triples).map(|n| {
+        protocol::ab_pair {
+            a: rng.gen_range(0..p),
+            b: rng.gen_range(0..p),
+        }
+    }).collect();
+    println!("Done generating my {} random triples!", num_triples); 
+    println!("Encrypting my 300 random triples with Paillier's Encryption...");
 
-async fn connection_loop(stream: TcpStream) {
-    let buf = BufReader::new(&stream);
-    let mut lines = buf.lines();
-    
-    while let Some(line) = lines.next().await {
-        println!("Got line: {:?}", line);
-    }
-    println!("done");
-}
+    let encrypted_pairs: Vec<messages_types::encrypted_ab_pair> = pairs
+        .iter()
+        .map(|pair| {
+            messages_types::encrypted_ab_pair {
+                a: Paillier::encrypt(&ek, pair.a),
+                b: Paillier::encrypt(&ek, pair.b),
+            }
+        })
+        .collect();
+    println!("Done encrypting {} random triples!", num_triples);
+    println!("Size of encrypted triples: {}", size_of::<[paillier::EncodedCiphertext<u32>; num_triples]>());
 
-async fn connect_to_player(addr: SocketAddrV4) -> TcpStream {
-    TcpStream::connect(addr)
-        .await
-        .expect(format!("Failed to connect to {}", addr).as_str())
 }
 
 fn main() {
@@ -50,35 +59,17 @@ fn main() {
         .parse()
         .expect("unable to parse supplied player number arg");
 
-    let (ek, dk) = Paillier::keypair().keys();
-
-    let x = Paillier::encrypt(&ek, 5);
-    let y = Paillier::encrypt(&ek, 11);
-
-    let m = messages_types::Gm8sMessage::P0EncryptedPairs(vec![
-        messages_types::p0_encrypted_pair { x: x, y: y}
-    ]);
-
-    println!("{}", serde_json::to_string(&m).unwrap());
-
-    /*match player_number {
+    match player_number {
         0 => {
-            task::block_on(run_server(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
+            p0();
         },
         1 => {
-            task::spawn(run_server(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5002)));
-            let mut p1_stream = task::block_on(connect_to_player(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
-            task::block_on(p1_stream.write_all("Poopy poop\n".as_bytes()));
-            loop {}
         },
         2 => {
-            let p0_stream = task::block_on(connect_to_player(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
-            let p1_stream = task::block_on(connect_to_player(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5002)));
-            loop {}
         },
         _ => {
             panic!("Invalid player number supplied");
         }
-    }*/
+    }
 
 }
