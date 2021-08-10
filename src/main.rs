@@ -1,14 +1,19 @@
 use std::env;
 use std::net::SocketAddrV4;
 use async_std::prelude::*;
+use async_std::io::prelude::BufReadExt;
 
 use async_std::{task,
-    io::{BufReader},
+    io::{BufRead, BufReader},
     net::{TcpListener, TcpStream},
     stream::{Stream, StreamExt},
 };
 
 use serde_json::de::Deserializer;
+
+use paillier::*;
+
+mod messages_types;
 
 async fn run_server(addr: SocketAddrV4) {
     let listener = TcpListener::bind(addr)
@@ -24,12 +29,12 @@ async fn run_server(addr: SocketAddrV4) {
 }
 
 async fn connection_loop(stream: TcpStream) {
-    //let mut lines = reader.lines();
-    let deserializer = Deserializer::from_reader(stream);
+    let buf = BufReader::new(&stream);
+    let mut lines = buf.lines();
     
-    /*while let Some(line) = lines.next().await {
+    while let Some(line) = lines.next().await {
         println!("Got line: {:?}", line);
-    }*/
+    }
     println!("done");
 }
 
@@ -45,7 +50,18 @@ fn main() {
         .parse()
         .expect("unable to parse supplied player number arg");
 
-    match player_number {
+    let (ek, dk) = Paillier::keypair().keys();
+
+    let x = Paillier::encrypt(&ek, 5);
+    let y = Paillier::encrypt(&ek, 11);
+
+    let m = messages_types::Gm8sMessage::P0EncryptedPairs(vec![
+        messages_types::p0_encrypted_pair { x: x, y: y}
+    ]);
+
+    println!("{}", serde_json::to_string(&m).unwrap());
+
+    /*match player_number {
         0 => {
             task::block_on(run_server(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
         },
@@ -63,6 +79,6 @@ fn main() {
         _ => {
             panic!("Invalid player number supplied");
         }
-    }
+    }*/
 
 }
