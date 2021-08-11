@@ -13,6 +13,10 @@ use serde_json::de::Deserializer;
 
 use paillier::*;
 
+use futures::stream::TryStreamExt;
+use futures::SinkExt;
+use futures_codec::{Bytes, LengthCodec, Framed, Encoder, FramedWrite};
+
 mod messages_types;
 
 async fn run_server(addr: SocketAddrV4) {
@@ -29,13 +33,17 @@ async fn run_server(addr: SocketAddrV4) {
 }
 
 async fn connection_loop(stream: TcpStream) {
-    let buf = BufReader::new(&stream);
+    let mut framed = Framed::new(stream, LengthCodec);
+    while let Some(message) = framed.try_next().await.expect("some error") {
+        println!("{:?}", message);
+    }
+    /*let buf = BufReader::new(&stream);
     let mut lines = buf.lines();
     
     while let Some(line) = lines.next().await {
         println!("Got line: {:?}", line);
     }
-    println!("done");
+    println!("done");*/
 }
 
 async fn connect_to_player(addr: SocketAddrV4) -> TcpStream {
@@ -50,25 +58,21 @@ fn main() {
         .parse()
         .expect("unable to parse supplied player number arg");
 
-    let (ek, dk) = Paillier::keypair().keys();
-
-    let x = Paillier::encrypt(&ek, 5);
-    let y = Paillier::encrypt(&ek, 11);
-
-    let m = messages_types::Gm8sMessage::P0EncryptedPairs(vec![
-        messages_types::p0_encrypted_pair { x: x, y: y}
-    ]);
-
-    println!("{}", serde_json::to_string(&m).unwrap());
-
-    /*match player_number {
+    match player_number {
         0 => {
             task::block_on(run_server(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
         },
         1 => {
             task::spawn(run_server(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5002)));
             let mut p1_stream = task::block_on(connect_to_player(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
-            task::block_on(p1_stream.write_all("Poopy poop\n".as_bytes()));
+            let mut framed_write = FramedWrite::new(&mut p1_stream, LengthCodec);
+            task::block_on(framed_write.send(Bytes::from("heyheyhey")));
+            task::block_on(framed_write.send(Bytes::from("sepeadfasdfasdfasdfasdfasdfasdf")));
+            task::block_on(framed_write.send(Bytes::from("asdfa818")));
+            task::block_on(framed_write.send(Bytes::from("")));
+            /*task::block_on(
+                //p1_stream.write_all("Poopy poop\n".as_bytes())
+            );*/
             loop {}
         },
         2 => {
@@ -79,6 +83,6 @@ fn main() {
         _ => {
             panic!("Invalid player number supplied");
         }
-    }*/
+    }
 
 }
