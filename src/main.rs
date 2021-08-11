@@ -1,21 +1,15 @@
 use std::env;
 use std::net::SocketAddrV4;
-use async_std::prelude::*;
-use async_std::io::prelude::BufReadExt;
 
 use async_std::{task,
-    io::{BufRead, BufReader},
     net::{TcpListener, TcpStream},
-    stream::{Stream, StreamExt},
 };
-
-use serde_json::de::Deserializer;
 
 use paillier::*;
 
 use futures::stream::TryStreamExt;
 use futures::SinkExt;
-use futures_codec::{Bytes, LengthCodec, Framed, Encoder, FramedWrite};
+use futures_codec::{Bytes, LengthCodec, Framed, FramedWrite};
 
 mod messages_types;
 
@@ -66,10 +60,10 @@ fn main() {
             task::spawn(run_server(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5002)));
             let mut p1_stream = task::block_on(connect_to_player(SocketAddrV4::new("127.0.0.1".parse().unwrap(), 5001)));
             let mut framed_write = FramedWrite::new(&mut p1_stream, LengthCodec);
-            task::block_on(framed_write.send(Bytes::from("heyheyhey")));
-            task::block_on(framed_write.send(Bytes::from("sepeadfasdfasdfasdfasdfasdfasdf")));
-            task::block_on(framed_write.send(Bytes::from("asdfa818")));
-            task::block_on(framed_write.send(Bytes::from("")));
+            task::block_on(framed_write.send(Bytes::from("heyheyhey"))).unwrap();
+            task::block_on(framed_write.send(Bytes::from("sepeadfasdfasdfasdfasdfasdfasdf"))).unwrap();
+            task::block_on(framed_write.send(Bytes::from("asdfa818"))).unwrap();
+            task::block_on(framed_write.send(Bytes::from(""))).unwrap();
             /*task::block_on(
                 //p1_stream.write_all("Poopy poop\n".as_bytes())
             );*/
