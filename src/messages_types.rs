@@ -1,6 +1,6 @@
+use std::net::SocketAddrV4;
 use paillier::EncodedCiphertext;
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Deserialize, Serialize)]
 pub enum Gm8sMessage {
@@ -32,3 +32,11 @@ pub type TP1P0 = EncodedCiphertext<u64>;
 
 pub type TP2P0 = EncodedCiphertext<u64>;
 pub type TP2P1 = EncodedCiphertext<u64>;
+
+pub struct Player1Data {
+    pub addr: Option<SocketAddrV4>,
+}
+
+pub struct Player2Data {
+    pub addr: Option<SocketAddrV4>,
+}
