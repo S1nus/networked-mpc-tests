@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub struct ab_pair {
+pub struct ABPair {
     pub a: u64,
     pub b: u64,
 }

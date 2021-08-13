@@ -1,7 +1,6 @@
 use rand::Rng;
 
 use std::env;
-use std::net::SocketAddrV4;
 use async_std::prelude::*;
 use async_std::io::prelude::BufReadExt;
 
@@ -21,7 +20,7 @@ mod messages_types;
 mod protocol;
 
 fn p0() {
-    const num_triples: usize = 300;
+    const NUM_TRIPLES: usize = 300;
     let p = 700;
     let mut rng = rand::thread_rng();
 
@@ -29,27 +28,27 @@ fn p0() {
     let (ek, dk) = Paillier::keypair().keys();
     println!("keypair generated.");
 
-    println!("generating my {} random triples...", num_triples);
-    let pairs: Vec<protocol::ab_pair> = (0..num_triples).map(|n| {
-        protocol::ab_pair {
+    println!("generating my {} random triples...", NUM_TRIPLES);
+    let pairs: Vec<protocol::ABPair> = (0..NUM_TRIPLES).map(|_| {
+        protocol::ABPair {
             a: rng.gen_range(0..p),
             b: rng.gen_range(0..p),
         }
     }).collect();
-    println!("Done generating my {} random triples!", num_triples); 
+    println!("Done generating my {} random triples!", NUM_TRIPLES); 
     println!("Encrypting my 300 random triples with Paillier's Encryption...");
 
-    let encrypted_pairs: Vec<messages_types::encrypted_ab_pair> = pairs
+    let encrypted_pairs: Vec<messages_types::EncryptedABPair> = pairs
         .iter()
         .map(|pair| {
-            messages_types::encrypted_ab_pair {
+            messages_types::EncryptedABPair {
                 a: Paillier::encrypt(&ek, pair.a),
                 b: Paillier::encrypt(&ek, pair.b),
             }
         })
         .collect();
-    println!("Done encrypting {} random triples!", num_triples);
-    println!("Size of encrypted triples: {}", size_of::<[paillier::EncodedCiphertext<u32>; num_triples]>());
+    println!("Done encrypting {} random triples!", NUM_TRIPLES);
+    println!("Size of encrypted triples: {}", size_of::<[paillier::EncodedCiphertext<u32>; NUM_TRIPLES]>());
 
 }
 
