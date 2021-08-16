@@ -33,10 +33,6 @@ pub type TP1P0 = EncodedCiphertext<u64>;
 pub type TP2P0 = EncodedCiphertext<u64>;
 pub type TP2P1 = EncodedCiphertext<u64>;
 
-pub struct Player1Data {
-    pub addr: Option<SocketAddrV4>,
-}
-
-pub struct Player2Data {
+pub struct PlayerData {
     pub addr: Option<SocketAddrV4>,
 }

@@ -2,6 +2,8 @@ use rand::Rng;
 
 use std::env;
 use std::net::SocketAddrV4;
+use std::sync::{Arc, Mutex};
+
 use async_std::prelude::*;
 use async_std::io::prelude::BufReadExt;
 
@@ -19,10 +21,41 @@ use std::mem::size_of;
 
 use futures::stream::TryStreamExt;
 use futures::SinkExt;
-use futures_codec::{Bytes, LengthCodec, Framed, FramedWrite};
+use futures_codec::{Bytes, BytesMut, LengthCodec, Framed, FramedWrite, Decoder, Encoder};
+use std::io::{Error, ErrorKind};
 
 mod messages_types;
 mod protocol;
+
+pub struct MyStringCodec(LengthCodec);
+
+impl Encoder for MyStringCodec {
+    type Item = String;
+    type Error = Error;
+
+    fn encode(&mut self, src: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = Bytes::from(src);
+        self.0.encode(bytes, dst)
+    }
+}
+
+impl Decoder for MyStringCodec {
+    type Item = String;
+    type Error = Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        match self.0.decode(src)? {
+            Some(bytes) => {
+                match String::from_utf8(bytes.to_vec()) {
+                    Ok(string) => Ok(Some(string)),
+                    Err(e) => Err(Error::new(ErrorKind::InvalidData, e))
+                }
+            },
+            None => Ok(None),
+        }
+    }
+}
+
 
 fn generate_triples(num: usize, p: u64) -> Vec<protocol::ABPair> {
     let mut rng = rand::thread_rng();
@@ -56,7 +89,7 @@ fn encrypt_triples(triples: Vec<protocol::ABPair> , ek: &paillier::EncryptionKey
     encrypted_pairs
 }
 
-async fn run_server(addr: SocketAddrV4, p1_data: &mut messages_types::Player1Data, p2_data: &mut messages_types::Player2Data) {
+async fn run_server(addr: SocketAddrV4, p1_data: Arc<Mutex<messages_types::PlayerData>>, p2_data: Arc<Mutex<messages_types::PlayerData>>) {
     let listener = TcpListener::bind(addr)
         .await
         .expect(format!("Failed to bind to {}", addr).as_str());
@@ -65,16 +98,41 @@ async fn run_server(addr: SocketAddrV4, p1_data: &mut messages_types::Player1Dat
 
     while let Ok((stream, addr)) = listener.accept().await {
         println!("Got a stream from {:?}!", addr);
-        task::spawn(connection_loop(stream, p1_data, p2_data));
+        task::spawn(connection_loop(stream, p1_data.clone(), p2_data.clone()));
     }
 
 }
 
-async fn connection_loop(stream: TcpStream, p1_data: &mut messages_types::Player1Data, p2_data: &mut messages_types::Player2Data) {
-    let mut framed = Framed::new(stream, LengthCodec);
+async fn connection_loop(stream: TcpStream, p1_data: Arc<Mutex<messages_types::PlayerData>>, p2_data: Arc<Mutex<messages_types::PlayerData>>) {
+    let mut framed = Framed::new(stream, MyStringCodec(LengthCodec));
+
+    if let Some(first_message) = framed.try_next().await.expect("error parsing first message with lengthcodec") {
+        let identify : messages_types::IntroMessage = serde_json::from_str(&first_message).expect("failed to parse intro message");
+        match identify.player_num {
+            0 => {
+                println!("that's not right. I'm player 0!");
+            },
+            1 => {
+                println!("connected to player 1");
+            },
+            2 => {
+                println!("Connected to player 2");
+            },
+            _ => {
+                panic!("invalid message");
+            }
+        }
+    }
+
     while let Some(message) = framed.try_next().await.expect("error with lengthcodec") {
         println!("{:?}", message);
     }
+}
+
+async fn connect_to_player(addr: SocketAddrV4) -> TcpStream {
+    TcpStream::connect(addr)
+        .await
+        .expect(&format!("failed to connect to player: {}", addr))
 }
 
 fn main() {
@@ -96,9 +154,18 @@ fn main() {
             let triples = generate_triples(NUM_TRIPLES, p);
             let encrypted_triples = encrypt_triples(triples, &ek, NUM_TRIPLES);
 
-            let mut p1_data = messages_types::Player1Data {
-                addr: None
-            };
+            let p1_data = Arc::new(Mutex::new(
+                    messages_types::PlayerData {
+                        addr: None
+                    }
+            ));
+
+            let p2_data = Arc::new(Mutex::new(
+                    messages_types::PlayerData {
+                        addr: None
+                    }
+            ));
+
 
             task::block_on(run_server(
                 SocketAddrV4::new(
@@ -106,15 +173,28 @@ fn main() {
                     .parse()
                     .unwrap(),
                 4000),
-                p1_data
+                p1_data,
+                p2_data
             ));
 
         },
         1 => {
             let intro_message = messages_types::IntroMessage { player_num: 1 };
-            println!("{}", serde_json::to_string(&intro_message).unwrap());
+            let intro_message_string = serde_json::to_string(&intro_message).unwrap();
+            let mut p0_stream = task::block_on(connect_to_player(
+                    SocketAddrV4::new("127.0.0.1"
+                    .parse()
+                    .unwrap()
+                    , 4000)
+            ));
+            let mut framed_write = FramedWrite::new(p0_stream, MyStringCodec(LengthCodec));
+            task::block_on(
+                framed_write.send(intro_message_string)
+            )
+            .expect("failed to send");
         },
         2 => {
+            let intro_message = messages_types::IntroMessage { player_num: 1 };
         },
         _ => {
             panic!("Invalid player number supplied");
